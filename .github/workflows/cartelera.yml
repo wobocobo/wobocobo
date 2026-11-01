@@ -1,0 +1,44 @@
+# Cada día genera la entrada de cine y el tocadiscos del README y los deja
+# en la rama huérfana «output», rehecha con un solo commit y push forzado:
+# así el bot no sale en contributors (la lista sale de main), no llena el
+# gráfico de verdes y el historial no crece. Los demás archivos que haya
+# en output se conservan.
+name: Cartelera
+
+on:
+  schedule:
+    - cron: '17 5 * * *' # 05:17 UTC; la hora en punto va más cargada
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: output # cualquier workflow que rehaga output usa este grupo
+  cancel-in-progress: false
+
+jobs:
+  cartelera:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Genera los SVG
+        run: python3 scripts/cartelera.py "$RUNNER_TEMP/salida"
+
+      - name: Rehace la rama output
+        run: |
+          out="$RUNNER_TEMP/output"
+          mkdir -p "$out"
+          if git fetch -q --depth=1 origin output; then
+            git archive FETCH_HEAD | tar -x -C "$out"
+          fi
+          cp "$RUNNER_TEMP"/salida/*.svg "$out/"
+          git switch -q --orphan output
+          cp -a "$out/." .
+          git add -A
+          git -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -q -m "Cartelera: $(date -u +%F)"
+          git push -q --force origin output

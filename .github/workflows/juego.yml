@@ -1,0 +1,57 @@
+# Adivina la peli: cada issue «Adivina la peli: A» (… «D») es un intento.
+# Repasa todos los issues abiertos del juego (si llegan varios a la vez,
+# GitHub solo deja esperando el último), guarda el estado y las imágenes en
+# la rama huérfana «juego» (un solo commit, push forzado) y después contesta
+# y cierra. Lo que escribe el jugador se lee por la API como datos: nunca
+# pasa por ${{ }} dentro de un run.
+name: Adivina la peli
+
+on:
+  issues:
+    types: [opened]
+  workflow_dispatch: # empieza una ronda nueva
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: juego
+  cancel-in-progress: false
+
+jobs:
+  juego:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.issue.title, 'Adivina la peli:')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Trae el estado
+        run: |
+          mkdir -p "$RUNNER_TEMP/juego"
+          if git fetch -q --depth=1 origin juego; then
+            git archive FETCH_HEAD | tar -x -C "$RUNNER_TEMP/juego"
+          fi
+
+      - name: Juega
+        env:
+          ACCION: ${{ github.event_name == 'workflow_dispatch' && 'nueva' || 'juega' }}
+          JUEGO_SECRETO: ${{ secrets.JUEGO_SECRETO }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 -B scripts/juego.py "$ACCION" "$RUNNER_TEMP/juego" # -B: sin __pycache__ que acabe en la rama
+
+      - name: Rehace la rama juego
+        run: |
+          git switch -q --orphan juego
+          cp -a "$RUNNER_TEMP/juego/." .
+          git add -A
+          git -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -q -m "Juego: $(date -u '+%F %H:%M')"
+          git push -q --force origin juego
+
+      - name: Contesta y cierra
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 -B scripts/juego.py contesta "$RUNNER_TEMP/juego"

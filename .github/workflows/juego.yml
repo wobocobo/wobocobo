@@ -50,6 +50,7 @@ jobs:
               -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
               commit -q -m "Juego: $(date -u '+%F %H:%M')"
           git push -q --force origin juego
+          git switch -q main # recupera scripts/, que el paso siguiente necesita
 
       - name: Contesta y cierra
         env:
